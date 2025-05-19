@@ -2,7 +2,7 @@ import requests
 import json
 import os
 # Step1: Get API key from https://developer.riotgames.com/
-api_key = 'RGAPI-df2ba4e6-ca77-4cbc-b0f9-9a7153ad2e61'
+api_key = 'ENTER YOUR API KEY'
 
 headers = {'X-Riot-Token': api_key}
 
