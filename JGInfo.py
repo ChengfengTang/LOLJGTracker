@@ -42,7 +42,7 @@ for frame in timeline["info"]["frames"]:
             victim = event.get("victimId")
             pos = event.get("position", {})
             if str(killer) in jungler_ids:
-                jungler_announcements.append(f"{minsec} - ⚔️ Jungler {killer} killed champion {victim} at ({pos.get('x', '?')}, {pos.get('y', '?')})")
+                jungler_announcements.append(f"{minsec} - ⚔️  Jungler {killer} killed champion {victim} at ({pos.get('x', '?')}, {pos.get('y', '?')})")
             elif str(victim) in jungler_ids:
                 jungler_announcements.append(f"{minsec} - 💀 Jungler {victim} got killed by champion {killer} at ({pos.get('x', '?')}, {pos.get('y', '?')})")
             for assist_pid in assists:
