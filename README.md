@@ -9,17 +9,17 @@ timeline.json: Per-minute snapshots of all players’ stats (level, CS, position
 metadata.json: Summoner spell IDs, champion, team side
 
 📊 2. Information Parser
-From timeline frames:
+From timeline frames and match metadata:
 
 Extract minute-by-minute (x, y) map positions
 
-Track jungle CS, level, gold
+Track CS, level, gold
 
-We parse all meaningful events from the timeline:
+Parse all meaningful events from the timeline:
 
 CHAMPION_KILL → kills and assists
 
-ELITE_MONSTER_KILL → Dragon, Herald, Baron
+ELITE_MONSTER_KILL → Dragon, Herald, Baron...etc
 
 LEVEL_UP → tracked with interpolated positions
 
