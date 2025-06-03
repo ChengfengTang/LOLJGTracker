@@ -48,7 +48,6 @@ for match_id in match_ids:
 
 # Step 5: Download match metadata (champion names, etc.)
 os.makedirs("matches", exist_ok=True)
-
 for match_id in match_ids:
     match_url = f"https://{match_region}.api.riotgames.com/lol/match/v5/matches/{match_id}"
     response = requests.get(match_url, headers=headers)
