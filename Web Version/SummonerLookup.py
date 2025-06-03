@@ -16,6 +16,7 @@ app = Flask(__name__)
 
 # Running server on http://127.0.0.1:5000
 # Set your Riot API key here
+# One way is to make users enter their own api key so it could never be an issue for public website
 API_KEY = 'RGAPI-d4c07ea9-7ceb-4b95-b24e-fe58067d1a03'
 HEADERS = {'X-Riot-Token': API_KEY}
 MATCH_REGION = "americas" # May need to add options for EUROPE and ASIA but doesn't seem to matter right now
