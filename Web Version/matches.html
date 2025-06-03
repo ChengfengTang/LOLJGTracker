@@ -3,112 +3,76 @@
 <head>
   <meta charset="UTF-8" />
   <title>LoL Jungle Tracker - Matches</title>
+
+  <!-- TODO: 
+   Make it look nicer? 
+   Add a go back button
+   Only load summoner's rift?
+   
+   -->
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #0e1013;
-      color: #fff;
-      padding: 40px;
-    }
-
-    .match-card {
-      background: #1e2125;
-      padding: 20px;
-      margin: 20px 0;
-      border-radius: 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .match-info {
-      display: flex;
-      align-items: center;
-    }
-
-    .champion-icon {
-      width: 64px;
-      height: 64px;
-      margin-right: 16px;
-      border-radius: 6px;
-    }
-
-    .text-details {
-      display: flex;
-      flex-direction: column;
-      font-size: 15px;
-    }
-
-    .teams {
-      display: flex;
-      gap: 8px;
-      margin: 0 20px;
-    }
-
-    .teams img {
-      width: 32px;
-      height: 32px;
-      border-radius: 4px;
-    }
-
-    button {
-      padding: 10px 20px;
-      background: #0ba360;
-      border: none;
-      border-radius: 8px;
-      color: white;
-      cursor: pointer;
-    }
-
-    button:hover {
-      background: #089150;
-    }
+    body {font-family: Arial, sans-serif; background: #0e1013; color: #fff; padding: 40px;}
+    .match-card {background: #1e2125; padding: 20px; margin: 20px 0; border-radius: 12px; display: flex; align-items: center; justify-content: space-between;}
+    .match-info {display: flex; align-items: center;}
+    .champion-icon {width: 64px; height: 64px; margin-right: 16px; border-radius: 6px;}
+    .text-details {display: flex; flex-direction: column; font-size: 15px;}
+    .teams {display: flex; gap: 8px; margin: 0 20px;}
+    .teams img {width: 32px; height: 32px; border-radius: 4px;}
+    button {padding: 10px 20px; background: #0ba360; border: none; border-radius: 8px; color: white; cursor: pointer;}
+    button:hover {background: #089150;}
   </style>
+
 </head>
 <body>
   <h2>Recent Matches</h2>
   <div id="match-list">Loading...</div>
-
   <script>
-
-    let patchVersion = "15.11.1"; // fallback value as of 6/1/2025, needs update 
-
-    async function fetchLatestPatchVersion() {
-      try {
+    let patchVersion = "15.11.1"; // Fallback value as of 6/1/2025, needs update 
+    async function fetchLatestPatchVersion() 
+    {
+      try 
+      {
         const res = await fetch("https://ddragon.leagueoflegends.com/api/versions.json");
         const versions = await res.json();
         patchVersion = versions[0];
-      } catch (e) {
+      } 
+      catch (e) 
+      {
         console.warn("Failed to fetch patch version. Using fallback:", patchVersion);
       }
     }
 
-    function formatDate(isoDate) {
+    function formatDate(isoDate) 
+    {
       const date = new Date(isoDate);
       const time = date.toLocaleTimeString();
       const day = date.toLocaleDateString();
       return `${day} ${time}`;
     }
 
-    function formatDuration(seconds) {
+    function formatDuration(seconds) 
+    {
       const mins = Math.floor(seconds / 60);
       const secs = seconds % 60;
       return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
 
-    async function fetchMatches() {
+    async function fetchMatches() 
+    {
       await fetchLatestPatchVersion(); // Wait for patch version before proceeding
 
       const params = new URLSearchParams(window.location.search);
       const puuid = params.get("puuid");
       const matchListDiv = document.getElementById("match-list");
 
-      if (!puuid) {
+      if (!puuid) 
+      {
         matchListDiv.textContent = "Missing PUUID in URL.";
         return;
       }
 
-      try {
+      try 
+      {
         const res = await fetch(`/api/matches/${puuid}`);
         const matchIds = await res.json();
         matchListDiv.innerHTML = "";
@@ -131,7 +95,8 @@
           const champImg = document.createElement("img");
           champImg.className = "champion-icon";
           champImg.src = `https://ddragon.leagueoflegends.com/cdn/${patchVersion}/img/champion/${user.championName}.png`;
-          champImg.onerror = () => {
+          champImg.onerror = () => 
+          {
             champImg.src = `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${user.championId}.png`;
           };
 
@@ -152,10 +117,12 @@
           const teamsDiv = document.createElement("div");
           teamsDiv.className = "teams";
 
-          for (const p of blueTeam) {
+          for (const p of blueTeam) 
+          {
             const icon = document.createElement("img");
             icon.src = `https://ddragon.leagueoflegends.com/cdn/${patchVersion}/img/champion/${p.championName}.png`;
-            icon.onerror = () => {
+            icon.onerror = () => 
+            {
               icon.src = `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${p.championId}.png`;
             };
             teamsDiv.appendChild(icon);
@@ -165,10 +132,12 @@
           spacer.style.width = "8px";
           teamsDiv.appendChild(spacer);
 
-          for (const p of redTeam) {
+          for (const p of redTeam) 
+          {
             const icon = document.createElement("img");
             icon.src = `https://ddragon.leagueoflegends.com/cdn/${patchVersion}/img/champion/${p.championName}.png`;
-            icon.onerror = () => {
+            icon.onerror = () => 
+            {
               icon.src = `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${p.championId}.png`;
             };
             teamsDiv.appendChild(icon);
@@ -185,13 +154,16 @@
           card.appendChild(replayBtn);
           matchListDiv.appendChild(card);
         }
-      } catch (err) {
+      } 
+      catch (err) 
+      {
         matchListDiv.textContent = "Error loading matches.";
         console.error(err);
       }
     }
 
-    function viewReplay(matchId) {
+    function viewReplay(matchId) 
+    {
       window.location.href = `/replay.html?matchId=${matchId}`;
     }
 

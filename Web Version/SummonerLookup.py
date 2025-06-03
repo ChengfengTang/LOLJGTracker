@@ -1,4 +1,13 @@
-from flask import Flask, request, jsonify, send_file, render_template_string
+#Overview of the Project
+#This is a web application that allows users to:
+
+#Look up a League of Legends summoner by their name and tag (e.g., "Player#NA1").
+#Retrieve a list of recent matches for that summoner.
+#Fetch detailed match data and timelines for visualization.
+#Display this information through web pages (SummonerLookup.html, matches.html, replay.html).
+
+
+from flask import Flask, request, jsonify, send_file
 import requests
 import os
 import json
@@ -7,11 +16,9 @@ app = Flask(__name__)
 
 # Running server on http://127.0.0.1:5000
 # Set your Riot API key here
-API_KEY = 'RGAPI-f240c49a-b5d4-4bd1-8641-c1c69fb7f937'
+API_KEY = 'RGAPI-d4c07ea9-7ceb-4b95-b24e-fe58067d1a03'
 HEADERS = {'X-Riot-Token': API_KEY}
 MATCH_REGION = "americas" # May need to add options for EUROPE and ASIA but doesn't seem to matter right now
-
-# Ensure directories exist
 os.makedirs("timelines", exist_ok=True)
 os.makedirs("matches", exist_ok=True)
 
@@ -24,53 +31,67 @@ def lookup():
 
     url = f"https://{MATCH_REGION}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{name}/{tag}"
     r = requests.get(url, headers=HEADERS)
-    if r.status_code != 200:
+    # If the request fails (status code not 200), returns an error.
+    # If successful, returns the API’s JSON response (e.g., {"puuid": "abc123", ...}).
+    if r.status_code == 429:
+        return jsonify({"error": "Rate limit exceeded, try again later"}), 429
+    elif r.status_code != 200:
         return jsonify({"error": f"Failed to fetch PUUID: {r.status_code}"}), r.status_code
 
     return jsonify(r.json())
 
 @app.route("/api/matches/<puuid>")
 def get_matches(puuid):
-    url = f"https://{MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?count=20"
+    url = f"https://{MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?count=20" # TODO : add option that gets more instead of 20 at once only
+    # Note that For development keys, Riot enforces: 20 requests per second, 100 requests every 2 minutes (120s)
     r = requests.get(url, headers=HEADERS)
-    if r.status_code != 200:
+    if r.status_code == 429:
+        return jsonify({"error": "Rate limit exceeded, try again later"}), 429
+    elif r.status_code != 200:
         return jsonify({"error": f"Failed to fetch matches: {r.status_code}"}), r.status_code
-
+    
     return jsonify(r.json())
 
 @app.route("/api/match/<match_id>")
 def get_match_data(match_id):
-    # Get metadata
-    meta_file = f"matches/{match_id}.json"
-    if not os.path.exists(meta_file):
+    # Get metadata local or fetch it
+    meta = f"matches/{match_id}.json"
+    if not os.path.exists(meta): # If
         url = f"https://{MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/{match_id}"
         r = requests.get(url, headers=HEADERS)
-        if r.status_code == 200:
-            with open(meta_file, "w") as f:
+        if r.status_code == 429:
+            return jsonify({"error": "Rate limit exceeded, try again later"}), 429
+        elif r.status_code == 200:
+            with open(meta, "w") as f:
                 json.dump(r.json(), f)
         else:
             return jsonify({"error": f"Failed to fetch match metadata: {r.status_code}"}), r.status_code
 
-    # Get timeline
-    timeline_file = f"timelines/{match_id}_timeline.json"
-    if not os.path.exists(timeline_file):
+    # Get timeline local or fetch it
+    timeline = f"timelines/{match_id}_timeline.json"
+    if not os.path.exists(timeline):
         url = f"https://{MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/{match_id}/timeline"
         r = requests.get(url, headers=HEADERS)
-        if r.status_code == 200:
-            with open(timeline_file, "w") as f:
+        if r.status_code == 429:
+            return jsonify({"error": "Rate limit exceeded, try again later"}), 429
+        elif r.status_code == 200:
+            with open(timeline, "w") as f:
                 json.dump(r.json(), f)
         else:
             return jsonify({"error": f"Failed to fetch timeline: {r.status_code}"}), r.status_code
 
     # Send both files
-    with open(meta_file) as f:
-        meta = json.load(f)
-    with open(timeline_file) as f:
-        timeline = json.load(f)
+    try:
+        with open(meta) as f:
+            meta = json.load(f)
+        with open(timeline) as f:
+            timeline = json.load(f)
+    except Exception as e:
+        return jsonify({"error": f"Failed to read file: {str(e)}"}), 500
 
     return jsonify({"metadata": meta, "timeline": timeline})
 
-# Serve static visualization files (optional if using frontend separately)
+# Serve lookup page
 @app.route('/')
 def home():
     return send_file('SummonerLookup.html')
@@ -83,7 +104,7 @@ def matches_page():
 # Serve replay page
 @app.route('/replay.html')
 def replay_page():
-    return send_file('replay.html')  # Not created yet
+    return send_file('replay.html') 
 
 
 if __name__ == "__main__":

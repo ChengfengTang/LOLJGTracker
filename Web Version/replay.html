@@ -1,0 +1,274 @@
+<!-- to do 
+1. tower?
+2. champ icon
+3. print kill info on the side
+4. instead of line, just do instant movement
+-->
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>LoL Jungle Tracker - Replay</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+</head>
+<body>
+  <script>
+    function setup() {
+      createCanvas(400, 400);
+    }
+
+    function draw() 
+    {
+      background(220);
+      circle(mouseX, mouseY, 50);
+    }
+  </script>
+</body>
+</html>
+
+<script>
+  let champMap = {};
+  let junglerData = [];
+  let events = [];
+  let mapImg;
+  let scaleFactor;
+  const mapSize = 1024;
+  const canvasSize = 850;
+  let currentGameTime = 0;
+  let lastTickTime = 0;
+  const tickInterval = 1000;
+  const gameTimePerTick = 10; // 10 seconds per tick
+
+  const matchId = new URLSearchParams(window.location.search).get("matchId");
+
+  function msToMinSec(ms)  // Turn ms into minute:second format
+  {
+    const m = Math.floor(ms / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  }
+
+  function label(champ) 
+  {
+    return champ.team === "Blue" ? `🔵 ${champ.name}` : `🔴 ${champ.name}`;
+  }
+
+  function timeToSeconds(timeStr) 
+  {
+  const [minutes, seconds] = timeStr.split(':').map(Number);
+  return minutes * 60 + seconds;
+  }
+  // Not needed once with champion Icon
+  function drawStar(x, y, radius) 
+  {
+    beginShape();
+    for (let i = 0; i < 10; i++) 
+    {
+      let angle = TWO_PI / 10 * i - PI / 2;
+      let r = (i % 2 === 0) ? radius : radius * 0.4;
+      vertex(x + cos(angle) * r, y + sin(angle) * r);
+    }
+    endShape(CLOSE);
+  }
+  function drawDiamond(x, y, size) 
+  {
+    beginShape();
+    vertex(x, y - size); // Top
+    vertex(x + size, y); // Right
+    vertex(x, y + size); // Bottom
+    vertex(x - size, y); // Left
+    endShape(CLOSE);
+  }
+
+  async function fetchData() 
+  {
+    try {
+      const res = await fetch(`/api/match/${matchId}`);
+      const { metadata, timeline } = await res.json();
+
+      champMap = {};
+      for (const p of metadata.info.participants) {
+        champMap[p.participantId] = {
+          name: p.championName,
+          team: p.teamId === 100 ? "Blue" : "Red"
+        };
+      }
+
+      for (const frame of timeline.info.frames) {
+        const ts = msToMinSec(frame.timestamp);
+        for (const [pid, pf] of Object.entries(frame.participantFrames)) {
+          if (!pf.position) continue;
+          junglerData.push({
+            id: parseInt(pid),
+            time: ts,
+            x: pf.position.x,
+            y: pf.position.y,
+            level: pf.level || 1,
+            cs: (pf.minionsKilled || 0) + (pf.jungleMinionsKilled || 0),
+            gold: pf.currentGold || 0
+          });
+        }
+      }
+
+      for (const frame of timeline.info.frames) {
+        for (const event of frame.events || []) {
+          const t = msToMinSec(event.timestamp);
+          const type = event.type;
+
+          if (type === "CHAMPION_KILL") {
+            const killer = champMap[event.killerId];
+            const victim = champMap[event.victimId];
+            if (!killer || !victim) continue;
+
+            events.push({ time: t, event: `⚔️ ${label(killer)} killed ${label(victim)} at (${event.position?.x}, ${event.position?.y})` });
+
+            for (const a of (event.assistingParticipantIds || [])) {
+              const assist = champMap[a];
+              if (assist) {
+                events.push({ time: t, event: `🤝 ${label(assist)} assisted the kill` });
+              }
+            }
+          } else if (type === "ELITE_MONSTER_KILL") {
+            const killer = champMap[event.killerId];
+            const monster = event.monsterType;
+            if (killer) {
+              events.push({ time: t, event: `👾 ${label(killer)} killed ${monster} at (${event.position?.x}, ${event.position?.y})` });
+            }
+          } else if (type === "LEVEL_UP") {
+            const champ = champMap[event.participantId];
+            const lvl = event.level;
+            if (champ && [6, 11, 16].includes(lvl)) {
+              events.push({ time: t, event: `🆙 ${label(champ)} leveled up to ${lvl}` });
+            }
+          }
+        }
+      }
+
+      console.log("✅ Data loaded:", junglerData.length, "points,", events.length, "events");
+
+    } catch (err) {
+      console.error("❌ Failed to load match data:", err);
+    }
+  }
+
+  function preload() 
+  {
+    mapImg = loadImage('/static/SRMap.png'); //only works in static folder for some reason
+  }
+
+  async function setup() 
+  {
+    createCanvas(canvasSize, canvasSize);
+    scaleFactor = canvasSize / mapSize;
+    textSize(10);
+    textAlign(LEFT);
+    lastTickTime = millis();
+    await fetchData(); // THIS IS CRUCIAL
+  }
+    
+  function draw() 
+  {
+    background(0);
+
+  if (mapImg) 
+  {
+    image(mapImg, 0, 0, canvasSize, canvasSize);
+  } 
+  else 
+  {
+    fill(50);
+    rect(0, 0, canvasSize, canvasSize);
+    fill(255);
+    text("Err loading map...", 10, 20);
+    return;
+  }
+
+  // Update game time
+  const elapsedTime = millis();
+  if (elapsedTime - lastTickTime >= tickInterval) 
+  {
+    currentGameTime += gameTimePerTick;
+    lastTickTime = elapsedTime;
+  }
+
+  const grouped = {};
+
+  // Group data by participant ID
+  for (const point of junglerData) 
+  {
+    if (!grouped[point.id]) grouped[point.id] = [];
+    grouped[point.id].push(point);
+  }
+
+  // Draw movements
+  for (const [pid, points] of Object.entries(grouped)) 
+  {
+    let prev = null, curr = null;
+
+    for (let i = 1; i < points.length; i++) 
+    {
+      const t1 = timeToSeconds(points[i - 1].time);
+      const t2 = timeToSeconds(points[i].time);
+      if (t1 <= currentGameTime && t2 > currentGameTime) {
+        prev = points[i - 1];
+        curr = points[i];
+        break;
+      } else if (i === points.length - 1 && t2 <= currentGameTime) {
+        prev = points[i - 1];
+        curr = points[i];
+      }
+    }
+
+    if (prev && curr) 
+    {
+      const x1 = (prev.x / 15000) * mapSize * scaleFactor;
+      const y1 = ((15000 - prev.y) / 15000) * mapSize * scaleFactor;
+      const x2 = (curr.x / 15000) * mapSize * scaleFactor;
+      const y2 = ((15000 - curr.y) / 15000) * mapSize * scaleFactor;
+
+      stroke(curr.id <= 5 ? color(0, 102, 255) : color(255, 0, 0)); // 🔵 or 🔴
+      strokeWeight(2);
+      line(x1, y1, x2, y2);
+
+      // Draw current location as star
+      fill(255, 204, 0);
+      noStroke();
+      drawStar(x2, y2, 5);
+
+      // Label
+      fill(255);
+      noStroke();
+      let champ = champMap[curr.id];
+      let champLabel = champ ? `${champ.team === "Blue" ? "🔵" : "🔴"} ${champ.name}` : `ID ${curr.id}`;
+      text(`${champLabel} (${curr.level})`, x2 + 5, y2 - 5);
+    }
+  }
+
+  // Draw events
+  for (const e of events) 
+  {
+    const eventTime = timeToSeconds(e.time);
+    if (currentGameTime >= eventTime && currentGameTime <= eventTime + 60) {
+      const match = e.event.match(/\((\d+), (\d+)\)/);
+      if (match) {
+        const [_, xRaw, yRaw] = match.map(Number);
+        const x = (xRaw / 15000) * mapSize * scaleFactor;
+        const y = ((15000 - yRaw) / 15000) * mapSize * scaleFactor;
+        fill(255, 255, 0);
+        drawDiamond(x, y, 5);
+        fill(255);
+        text(e.event, x + 6, y - 4);
+      }
+    }
+  }
+
+  // Display game timer
+  const m = Math.floor(currentGameTime / 60);
+  const s = Math.floor(currentGameTime % 60).toString().padStart(2, '0');
+  fill(255);
+  text(`⏱️ ${m}:${s}`, 10, 20);
+}
+
+
+</script>
