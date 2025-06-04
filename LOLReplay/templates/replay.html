@@ -1,0 +1,356 @@
+<!-- 
+
+To Do:
+
+Interloping now only on minute basis, make it work for events: kills, assists, deaths, spawns (can calcualte death timer based on levels)
+
+-->
+
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>LoL Jungle Tracker - Replay</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+  <style>
+  body {
+    display: flex;
+    margin: 0;
+    background: #111;
+    color: white;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  #log {
+    width: 300px;
+    max-height: calc(100vh - 50px);
+    padding: 10px;
+    overflow-y: auto;
+    font-family: monospace;
+    background: #1a1a1a;
+    border-right: 2px solid #333;
+  }
+
+  #controls {
+    position: absolute;
+    bottom: 10px;
+    left: 320px;
+    padding: 10px;
+    background: #1a1a1a;
+    border: 2px solid #333;
+  }
+
+  canvas {
+    display: block;
+    background: #000;
+  }
+</style>
+</head>
+<body>
+  <div id="log"><b>📜 Event Log</b><br /></div>
+  <div id="controls">
+    <input type="range" id="timeSlider" min="0" max="1000" value="0">
+    <label for="timeSlider">Game Time: <span id="sliderTime">0:00</span></label>
+  </div>
+
+<script>
+let champIconMap = {};
+let championNames = new Set();
+let champMap = {};
+let junglerData = [];
+let events = [];
+let mapImg;
+let scaleFactor;
+const mapSize = 1024;
+const canvasSize = 910;
+let currentGameTime = 0;
+let maxGameTime = 0;
+let lastTickTime = 0;
+const tickInterval = 1000 / 60; // 60 FPS
+const gameTimePerTick = 0.1; // 100ms increments
+const matchId = new URLSearchParams(window.location.search).get("matchId");
+const displayedEvents = new Set();
+let isPlaying = true;
+let deathStates = {}; // Tracks { dead: boolean, deathTime: number, respawnTime: number }
+
+function msToMinSec(ms) {
+  const m = Math.floor(ms / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function secondsToMinSec(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function label(champ) {
+  return champ.team === "Blue" ? `🔵 ${champ.name}` : `🔴 ${champ.name}`;
+}
+
+function timeToSeconds(timeStr) {
+  const [minutes, seconds] = timeStr.split(':').map(Number);
+  return minutes * 60 + seconds;
+}
+
+function calculateRespawnTime(level) {
+  // Approximate LoL respawn times: 8s at level 1, ~30s at level 11
+  return 8 + (level - 1) * 2;
+}
+
+function interpolatePosition(point1, point2, t) {
+  if (!point2) return { x: point1.x, y: point1.y };
+  const ratio = (t - point1.timeSeconds) / (point2.timeSeconds - point1.timeSeconds);
+  const x = point1.x + (point2.x - point1.x) * ratio;
+  const y = point1.y + (point2.y - point1.y) * ratio;
+  return { x, y };
+}
+
+function getBasePosition(team) {
+  return team === "Blue" ? { x: 554, y: 581 } : { x: 14500, y: 14511 };
+}
+
+function preload() {
+  mapImg = loadImage('/static/SRMap.png');
+}
+
+async function fetchData() {
+  try {
+    const res = await fetch(`/api/match/${matchId}`);
+    const { metadata, timeline } = await res.json();
+
+    champMap = {};
+    for (const p of metadata.info.participants) {
+      const name = p.championName;
+      champMap[p.participantId] = {
+        name,
+        team: p.teamId === 100 ? "Blue" : "Red"
+      };
+      championNames.add(name);
+      deathStates[p.participantId] = { dead: false, deathTime: 0, respawnTime: 0 };
+    }
+
+    for (let name of championNames) {
+      let patchVersion = "15.11.1";
+      try {
+        const res = await fetch("https://ddragon.leagueoflegends.com/api/versions.json");
+        const versions = await res.json();
+        patchVersion = versions[0];
+      } catch (e) {
+        console.warn("Failed to fetch patch version. Using fallback:", patchVersion);
+      }
+      champIconMap[name] = await new Promise((resolve) => {
+        loadImage(`https://ddragon.leagueoflegends.com/cdn/${patchVersion}/img/champion/${name}.png`, resolve);
+      });
+    }
+
+    for (const frame of timeline.info.frames) {
+      const timeSec = frame.timestamp / 1000;
+      if (timeSec > maxGameTime) maxGameTime = timeSec;
+      for (const [pid, pf] of Object.entries(frame.participantFrames)) {
+        if (!pf.position) continue;
+        junglerData.push({
+          id: parseInt(pid),
+          time: msToMinSec(frame.timestamp),
+          timeSeconds: timeSec,
+          x: pf.position.x,
+          y: pf.position.y,
+          level: pf.level || 1,
+          cs: (pf.minionsKilled || 0) + (pf.jungleMinionsKilled || 0),
+          gold: pf.currentGold || 0
+        });
+      }
+    }
+
+    for (const frame of timeline.info.frames) {
+      const timeSec = frame.timestamp / 1000;
+      for (const event of frame.events || []) {
+        const type = event.type;
+        const eventTimeSec = event.timestamp / 1000; // Use precise event timestamp
+        const eventTimeStr = secondsToMinSec(eventTimeSec);
+        if (type === "CHAMPION_KILL") {
+          const killer = champMap[event.killerId];
+          const victim = champMap[event.victimId];
+          if (!killer || !victim) continue;
+          events.push({ time: eventTimeStr, timeSeconds: eventTimeSec, event: `⚔️ ${label(killer)} killed ${label(victim)} at (${event.position?.x}, ${event.position?.y})` });
+          deathStates[event.victimId] = {
+            dead: true,
+            deathTime: eventTimeSec,
+            respawnTime: eventTimeSec + calculateRespawnTime(junglerData.find(p => p.id === event.victimId && p.timeSeconds <= eventTimeSec)?.level || 1)
+          };
+          for (const a of (event.assistingParticipantIds || [])) {
+            const assist = champMap[a];
+            if (assist) {
+              events.push({ time: eventTimeStr, timeSeconds: eventTimeSec, event: `🤝 ${label(assist)} assisted the kill` });
+            }
+          }
+        } else if (type === "ELITE_MONSTER_KILL") {
+          const killer = champMap[event.killerId];
+          const monster = event.monsterType;
+          if (killer) {
+            events.push({ time: eventTimeStr, timeSeconds: eventTimeSec, event: `👾 ${label(killer)} killed ${monster} at (${event.position?.x}, ${event.position?.y})` });
+          }
+        } else if (type === "LEVEL_UP") {
+          const champ = champMap[event.participantId];
+          const lvl = event.level;
+          if (champ && [6, 11, 16].includes(lvl)) {
+            events.push({ time: eventTimeStr, timeSeconds: eventTimeSec, event: `🆙 ${label(champ)} leveled up to ${lvl}` });
+          }
+        }
+      }
+    }
+
+    console.log("✅ Data loaded:", junglerData.length, "points,", events.length, "events");
+    document.getElementById('timeSlider').max = maxGameTime;
+
+  } catch (err) {
+    console.error("❌ Failed to load match data:", err);
+  }
+}
+
+async function setup() {
+  createCanvas(canvasSize, canvasSize).parent(document.body);
+  scaleFactor = canvasSize / mapSize;
+  textSize(10);
+  textAlign(LEFT);
+  lastTickTime = millis();
+  await fetchData();
+
+  const slider = document.getElementById('timeSlider');
+  slider.addEventListener('input', () => {
+    isPlaying = false;
+    currentGameTime = parseFloat(slider.value);
+    document.getElementById('sliderTime').textContent = secondsToMinSec(currentGameTime);
+    displayedEvents.clear();
+    document.getElementById('log').innerHTML = '<b>📜 Event Log</b><br />';
+    for (const [pid, state] of Object.entries(deathStates)) {
+      state.dead = false; // Reset death states on slider scrub
+    }
+  });
+  slider.addEventListener('change', () => {
+    isPlaying = true;
+  });
+}
+
+function draw() {
+  background(0);
+
+  if (mapImg) image(mapImg, 0, 0, canvasSize, canvasSize);
+  else {
+    fill(50);
+    rect(0, 0, canvasSize, canvasSize);
+    fill(255);
+    text("Err loading map...", 10, 20);
+    return;
+  }
+
+  if (isPlaying) {
+    const elapsedTime = millis();
+    if (elapsedTime - lastTickTime >= tickInterval) {
+      currentGameTime += gameTimePerTick;
+      lastTickTime = elapsedTime;
+      if (currentGameTime > maxGameTime) {
+        currentGameTime = 0;
+        displayedEvents.clear();
+        document.getElementById('log').innerHTML = '<b>📜 Event Log</b><br />';
+        for (const [pid, state] of Object.entries(deathStates)) {
+          state.dead = false;
+        }
+      }
+      document.getElementById('timeSlider').value = currentGameTime;
+      document.getElementById('sliderTime').textContent = secondsToMinSec(currentGameTime);
+    }
+  }
+
+  const grouped = {};
+  for (const point of junglerData) {
+    if (!grouped[point.id]) grouped[point.id] = [];
+    grouped[point.id].push(point);
+  }
+
+  for (const [pid, points] of Object.entries(grouped)) {
+    const state = deathStates[pid];
+    let pos;
+    if (state.dead && currentGameTime >= state.deathTime && currentGameTime < state.respawnTime) {
+      pos = getBasePosition(champMap[pid].team); // Move to base while dead
+    } else if (state.dead && currentGameTime >= state.respawnTime) {
+      state.dead = false; // Respawn
+      let curr = null;
+      let next = null;
+      for (let i = 0; i < points.length; i++) {
+        if (points[i].timeSeconds > currentGameTime) {
+          next = points[i];
+          curr = i > 0 ? points[i - 1] : points[i];
+          break;
+        }
+        curr = points[i];
+      }
+      pos = curr ? interpolatePosition(curr, next, currentGameTime) : { x: curr.x, y: curr.y };
+    } else {
+      let curr = null;
+      let next = null;
+      for (let i = 0; i < points.length; i++) {
+        if (points[i].timeSeconds > currentGameTime) {
+          next = points[i];
+          curr = i > 0 ? points[i - 1] : points[i];
+          break;
+        }
+        curr = points[i];
+      }
+      pos = curr ? interpolatePosition(curr, next, currentGameTime) : { x: curr.x, y: curr.y };
+    }
+
+    const x = (pos.x / 15000) * mapSize * scaleFactor;
+    const y = ((15000 - pos.y) / 15000) * mapSize * scaleFactor;
+    imageMode(CENTER);
+    let champ = champMap[pid];
+    let icon = champ && champIconMap[champ.name];
+    if (icon) {
+      strokeWeight(3);
+      stroke(champ.team === "Blue" ? color(0, 128, 255) : color(255, 0, 0));
+      rect(x - 16, y - 16, 32, 32);
+      noStroke();
+      image(icon, x, y, 32, 32);
+    }
+    imageMode(CORNER);
+  }
+
+  for (const e of events) {
+    const eventTime = e.timeSeconds;
+    if (
+      currentGameTime >= eventTime &&
+      !displayedEvents.has(e)
+    ) {
+      displayedEvents.add(e);
+      const div = document.createElement("div");
+      div.textContent = `${e.time} - ${e.event}`;
+      document.getElementById("log").appendChild(div);
+    }
+
+    if (
+      currentGameTime >= eventTime &&
+      currentGameTime <= eventTime + 30 &&
+      /\(\d+, \d+\)/.test(e.event)
+    ) {
+      const match = e.event.match(/\((\d+), (\d+)\)/);
+      if (match) {
+        const [_, xRaw, yRaw] = match.map(Number);
+        const x = (xRaw / 15000) * mapSize * scaleFactor;
+        const y = ((15000 - yRaw) / 15000) * mapSize * scaleFactor;
+        fill(255);
+        textSize(18);
+        text("\uD83D\uDC80", x - 8, y + 8);
+      }
+    }
+  }
+
+  const m = Math.floor(currentGameTime / 60);
+  const s = Math.floor(currentGameTime % 60).toString().padStart(2, "0");
+  fill(255);
+  text(`\u23F1\uFE0F ${m}:${s}`, 10, 20);
+}
+</script>
+</body>
+</html>
