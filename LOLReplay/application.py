@@ -21,8 +21,9 @@ app = Flask(__name__)
 # Set your Riot API key here
 # Get API key from https://developer.riotgames.com/
 # One way is to make users enter their own api key so it could never be an issue for public website
-API_KEY = 'RGAPI-b761cebd-10ec-4ea8-9eec-4cc2d45411e0'
-HEADERS = {'X-Riot-Token': API_KEY}
+#API_KEY = 'RGAPI-b761cebd-10ec-4ea8-9eec-4cc2d45411e0'
+#HEADERS = {'X-Riot-Token': API_KEY}
+
 MATCH_REGION = "americas" # May need to add options for EUROPE and ASIA but doesn't seem to matter right now
 os.makedirs("timelines", exist_ok=True)
 os.makedirs("matches", exist_ok=True)
@@ -31,11 +32,14 @@ os.makedirs("matches", exist_ok=True)
 def lookup():
     name = request.args.get("name")
     tag = request.args.get("tag")
-    if not name or not tag:
-        return jsonify({"error": "Missing name or tag"}), 400
+    api_key = request.args.get("api_key")
+    
+    if not name or not tag or not api_key:
+        return jsonify({"error": "Missing name, tag, or API key"}), 400
 
+    headers = {'X-Riot-Token': api_key}
     url = f"https://{MATCH_REGION}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{name}/{tag}"
-    r = requests.get(url, headers=HEADERS)
+    r = requests.get(url, headers=headers)
     # If the request fails (status code not 200), returns an error.
     # If successful, returns the API's JSON response (e.g., {"puuid": "abc123", ...}).
     if r.status_code == 429:
@@ -47,9 +51,48 @@ def lookup():
 
 @app.route("/api/matches/<puuid>")
 def get_matches(puuid):
-    url = f"https://{MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?count=20" # TODO : add option that gets more instead of 20 at once only
+    api_key = request.args.get("api_key")
+    if not api_key:
+        return jsonify({"error": "Missing API key"}), 400
+
+    start = request.args.get("start", "0")
+    count = request.args.get("count", "20")
+    
+    try:
+        start = int(start)
+        count = int(count)
+    except ValueError:
+        return jsonify({"error": "Invalid start or count parameters"}), 400
+
+    headers = {'X-Riot-Token': api_key}
     # Note that For development keys, Riot enforces: 20 requests per second, 100 requests every 2 minutes (120s)
-    r = requests.get(url, headers=HEADERS)
+    url = f"https://{MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start={start}&count={count}"
+    r = requests.get(url, headers=headers)
+    if r.status_code == 429:
+        return jsonify({"error": "Rate limit exceeded, try again later"}), 429
+    elif r.status_code != 200:
+        return jsonify({"error": f"Failed to fetch matches: {r.status_code}"}), r.status_code
+    
+    return jsonify(r.json())
+
+@app.route("/api/matches/<puuid>/more")
+def get_more_matches(puuid):
+    api_key = request.args.get("api_key")
+    if not api_key:
+        return jsonify({"error": "Missing API key"}), 400
+
+    start = request.args.get("start", "0")
+    count = request.args.get("count", "20")
+    
+    try:
+        start = int(start)
+        count = int(count)
+    except ValueError:
+        return jsonify({"error": "Invalid start or count parameters"}), 400
+
+    headers = {'X-Riot-Token': api_key}
+    url = f"https://{MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start={start}&count={count}"
+    r = requests.get(url, headers=headers)
     if r.status_code == 429:
         return jsonify({"error": "Rate limit exceeded, try again later"}), 429
     elif r.status_code != 200:
@@ -59,11 +102,16 @@ def get_matches(puuid):
 
 @app.route("/api/match/<match_id>")
 def get_match_data(match_id):
+    api_key = request.args.get("api_key")
+    if not api_key:
+        return jsonify({"error": "Missing API key"}), 400
+
+    headers = {'X-Riot-Token': api_key}
     # Get metadata local or fetch it
     meta = f"matches/{match_id}.json"
     if not os.path.exists(meta): # If
         url = f"https://{MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/{match_id}"
-        r = requests.get(url, headers=HEADERS)
+        r = requests.get(url, headers=headers)
         if r.status_code == 429:
             return jsonify({"error": "Rate limit exceeded, try again later"}), 429
         elif r.status_code == 200:
@@ -76,7 +124,7 @@ def get_match_data(match_id):
     timeline = f"timelines/{match_id}_timeline.json"
     if not os.path.exists(timeline):
         url = f"https://{MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/{match_id}/timeline"
-        r = requests.get(url, headers=HEADERS)
+        r = requests.get(url, headers=headers)
         if r.status_code == 429:
             return jsonify({"error": "Rate limit exceeded, try again later"}), 429
         elif r.status_code == 200:

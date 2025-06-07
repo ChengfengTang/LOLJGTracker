@@ -2,7 +2,7 @@
 
 To Do:
 
-Interloping now only on minute basis, make it work for events: kills, assists, deaths, spawns (can calcualte death timer based on levels)
+death shoudl respawn at base (treat it as a new event at base x,y and add it to interpolation), hide icon until respawn
 
 -->
 
@@ -41,6 +41,31 @@ Interloping now only on minute basis, make it work for events: kills, assists, d
     border: 2px solid #333;
   }
 
+  .header {
+    position: absolute;
+    top: 10px;
+    left: 320px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .back-button {
+    padding: 8px 16px;
+    background: #2c2f33;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .back-button:hover {
+    background: #36393f;
+  }
+
   canvas {
     display: block;
     background: #000;
@@ -49,6 +74,9 @@ Interloping now only on minute basis, make it work for events: kills, assists, d
 </head>
 <body>
   <div id="log"><b>📜 Event Log</b><br /></div>
+  <div class="header">
+    <button class="back-button" onclick="window.location.href='/matches.html'">← Back to Matches</button>
+  </div>
   <div id="controls">
     <input type="range" id="timeSlider" min="0" max="1000" value="0">
     <label for="timeSlider">Game Time: <span id="sliderTime">0:00</span></label>
@@ -95,16 +123,75 @@ function timeToSeconds(timeStr) {
   return minutes * 60 + seconds;
 }
 
-function calculateRespawnTime(level) {
-  // Approximate LoL respawn times: 8s at level 1, ~30s at level 11
-  return 8 + (level - 1) * 2;
+function calculateRespawnTime(level, gameMinutes) {
+  // Base Respawn Window (BRW) values from LoL wiki
+  const BRW = [-1, 10, 10, 12, 12, 14, 16, 20, 25, 28, 32.5, 35, 37.5, 40, 42.5, 45, 47.5, 50, 52.5];
+  const base_timer = BRW[level];
+
+  // Apply Time Impact Factor (TIF)
+  let tif = 0;
+  if (gameMinutes < 15) {
+    tif = 0; // No TIF for 0–14:59
+  } else if (gameMinutes < 30) {
+    tif = Math.ceil(2 * (gameMinutes - 15)) * 0.425 / 100;
+  } else if (gameMinutes < 45) {
+    tif = 12.75 + Math.ceil(2 * (gameMinutes - 30)) * 0.30 / 100;
+  } else {
+    tif = 21.75 + Math.ceil(2 * (gameMinutes - 45)) * 1.45 / 100;
+  }
+
+  // Total timer = BRW * (1 + TIF)
+  return Math.round(base_timer * (1 + tif));
 }
 
-function interpolatePosition(point1, point2, t) {
+function interpolatePosition(point1, point2, t, events, participantId) {
   if (!point2) return { x: point1.x, y: point1.y };
-  const ratio = (t - point1.timeSeconds) / (point2.timeSeconds - point1.timeSeconds);
-  const x = point1.x + (point2.x - point1.x) * ratio;
-  const y = point1.y + (point2.y - point1.y) * ratio;
+  
+  // Find any events between point1 and point2 that involve this participant
+  const relevantEvents = events.filter(e => 
+    e.timeSeconds > point1.timeSeconds && 
+    e.timeSeconds <= point2.timeSeconds &&
+    (e.type === "CHAMPION_KILL" || e.type === "ELITE_MONSTER_KILL") &&
+    (
+      (e.type === "CHAMPION_KILL" && 
+        (e.killerId === participantId || 
+         e.victimId === participantId || 
+         (e.assistingParticipantIds || []).includes(participantId))) ||
+      (e.type === "ELITE_MONSTER_KILL" && e.killerId === participantId)
+    )
+  );
+
+  if (relevantEvents.length === 0) {
+    // Normal interpolation if no relevant events
+    const ratio = (t - point1.timeSeconds) / (point2.timeSeconds - point1.timeSeconds);
+    const x = point1.x + (point2.x - point1.x) * ratio;
+    const y = point1.y + (point2.y - point1.y) * ratio;
+    return { x, y };
+  }
+
+  // Find the last event before or at current time
+  const lastEvent = relevantEvents
+    .filter(e => e.timeSeconds <= t)
+    .sort((a, b) => b.timeSeconds - a.timeSeconds)[0];
+
+  if (!lastEvent) {
+    // If no events before current time, interpolate to first event
+    const ratio = (t - point1.timeSeconds) / (relevantEvents[0].timeSeconds - point1.timeSeconds);
+    const x = point1.x + (relevantEvents[0].position.x - point1.x) * ratio;
+    const y = point1.y + (relevantEvents[0].position.y - point1.y) * ratio;
+    return { x, y };
+  }
+
+  // If we're at an event, use its position
+  if (Math.abs(t - lastEvent.timeSeconds) < 0.1) {
+    return { x: lastEvent.position.x, y: lastEvent.position.y };
+  }
+
+  // If we're after the last event, interpolate to next point
+  const nextPoint = relevantEvents.find(e => e.timeSeconds > t) || point2;
+  const ratio = (t - lastEvent.timeSeconds) / (nextPoint.timeSeconds - lastEvent.timeSeconds);
+  const x = lastEvent.position.x + (nextPoint.x - lastEvent.position.x) * ratio;
+  const y = lastEvent.position.y + (nextPoint.y - lastEvent.position.y) * ratio;
   return { x, y };
 }
 
@@ -118,8 +205,25 @@ function preload() {
 
 async function fetchData() {
   try {
-    const res = await fetch(`/api/match/${matchId}`);
+    const params = new URLSearchParams(window.location.search);
+    const matchId = params.get("matchId");
+    const apiKey = sessionStorage.getItem('riot_api_key');
+
+    if (!matchId || !apiKey) {
+      console.error("Missing matchId or API key. Please start over from the lookup page.");
+      document.getElementById('log').innerHTML = '<b>❌ Error</b><br />Missing matchId or API key. Please start over from the lookup page.';
+      return;
+    }
+
+    const res = await fetch(`/api/match/${matchId}?api_key=${encodeURIComponent(apiKey)}`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch match data: ${res.status}`);
+    }
     const { metadata, timeline } = await res.json();
+
+    if (!metadata || !timeline) {
+      throw new Error('Invalid match data received');
+    }
 
     champMap = {};
     for (const p of metadata.info.participants) {
@@ -166,24 +270,66 @@ async function fetchData() {
 
     for (const frame of timeline.info.frames) {
       const timeSec = frame.timestamp / 1000;
+      const gameMinutes = Math.floor(timeSec / 60);
       for (const event of frame.events || []) {
         const type = event.type;
-        const eventTimeSec = event.timestamp / 1000; // Use precise event timestamp
+        const eventTimeSec = event.timestamp / 1000;
         const eventTimeStr = secondsToMinSec(eventTimeSec);
+        
         if (type === "CHAMPION_KILL") {
           const killer = champMap[event.killerId];
           const victim = champMap[event.victimId];
           if (!killer || !victim) continue;
-          events.push({ time: eventTimeStr, timeSeconds: eventTimeSec, event: `⚔️ ${label(killer)} killed ${label(victim)} at (${event.position?.x}, ${event.position?.y})` });
+          
+          // Add kill event with position and participants
+          events.push({ 
+            time: eventTimeStr, 
+            timeSeconds: eventTimeSec, 
+            type: "CHAMPION_KILL",
+            position: event.position,
+            killerId: event.killerId,
+            victimId: event.victimId,
+            assistingParticipantIds: event.assistingParticipantIds || [],
+            event: `⚔️ ${label(killer)} killed ${label(victim)} at (${event.position?.x}, ${event.position?.y})` 
+          });
+
+          // Update death state with accurate respawn time
+          const victimLevel = junglerData.find(p => p.id === event.victimId && p.timeSeconds <= eventTimeSec)?.level || 1;
+          const respawnTime = calculateRespawnTime(victimLevel, gameMinutes);
+          const respawnTimeSec = eventTimeSec + respawnTime;
+          const respawnTimeStr = secondsToMinSec(respawnTimeSec * 1000);
+          
+          // Add respawn event at base position
+          const basePos = getBasePosition(champMap[event.victimId].team);
+          events.push({
+            time: respawnTimeStr,
+            timeSeconds: respawnTimeSec,
+            type: "RESPAWN",
+            position: basePos,
+            participantId: event.victimId,
+            event: `🔄 ${label(victim)} respawned at base`
+          });
+
           deathStates[event.victimId] = {
             dead: true,
             deathTime: eventTimeSec,
-            respawnTime: eventTimeSec + calculateRespawnTime(junglerData.find(p => p.id === event.victimId && p.timeSeconds <= eventTimeSec)?.level || 1)
+            respawnTime: respawnTimeSec
           };
+
+          // Add assist events
           for (const a of (event.assistingParticipantIds || [])) {
             const assist = champMap[a];
             if (assist) {
-              events.push({ time: eventTimeStr, timeSeconds: eventTimeSec, event: `🤝 ${label(assist)} assisted the kill` });
+              events.push({ 
+                time: eventTimeStr, 
+                timeSeconds: eventTimeSec,
+                type: "ASSIST",
+                position: event.position,
+                killerId: event.killerId,
+                victimId: event.victimId,
+                assistingParticipantIds: event.assistingParticipantIds || [],
+                event: `🤝 ${label(assist)} assisted the kill` 
+              });
             }
           }
         } else if (type === "ELITE_MONSTER_KILL") {
@@ -207,6 +353,7 @@ async function fetchData() {
 
   } catch (err) {
     console.error("❌ Failed to load match data:", err);
+    document.getElementById('log').innerHTML = `<b>❌ Error</b><br />Failed to load match data: ${err.message}`;
   }
 }
 
@@ -216,6 +363,10 @@ async function setup() {
   textSize(10);
   textAlign(LEFT);
   lastTickTime = millis();
+  
+  // Show loading message
+  document.getElementById('log').innerHTML = '<b>📜 Loading match data...</b><br />';
+  
   await fetchData();
 
   const slider = document.getElementById('timeSlider');
@@ -273,22 +424,13 @@ function draw() {
   for (const [pid, points] of Object.entries(grouped)) {
     const state = deathStates[pid];
     let pos;
+    let shouldDraw = true; // Flag to control whether to draw the champion
+    
     if (state.dead && currentGameTime >= state.deathTime && currentGameTime < state.respawnTime) {
-      pos = getBasePosition(champMap[pid].team); // Move to base while dead
-    } else if (state.dead && currentGameTime >= state.respawnTime) {
-      state.dead = false; // Respawn
-      let curr = null;
-      let next = null;
-      for (let i = 0; i < points.length; i++) {
-        if (points[i].timeSeconds > currentGameTime) {
-          next = points[i];
-          curr = i > 0 ? points[i - 1] : points[i];
-          break;
-        }
-        curr = points[i];
-      }
-      pos = curr ? interpolatePosition(curr, next, currentGameTime) : { x: curr.x, y: curr.y };
+      // If dead, don't draw the champion until respawn
+      shouldDraw = false;
     } else {
+      // Normal movement interpolation with events
       let curr = null;
       let next = null;
       for (let i = 0; i < points.length; i++) {
@@ -299,22 +441,24 @@ function draw() {
         }
         curr = points[i];
       }
-      pos = curr ? interpolatePosition(curr, next, currentGameTime) : { x: curr.x, y: curr.y };
+      pos = curr ? interpolatePosition(curr, next, currentGameTime, events, parseInt(pid)) : { x: curr.x, y: curr.y };
     }
 
-    const x = (pos.x / 15000) * mapSize * scaleFactor;
-    const y = ((15000 - pos.y) / 15000) * mapSize * scaleFactor;
-    imageMode(CENTER);
-    let champ = champMap[pid];
-    let icon = champ && champIconMap[champ.name];
-    if (icon) {
-      strokeWeight(3);
-      stroke(champ.team === "Blue" ? color(0, 128, 255) : color(255, 0, 0));
-      rect(x - 16, y - 16, 32, 32);
-      noStroke();
-      image(icon, x, y, 32, 32);
+    if (shouldDraw) {
+      const x = (pos.x / 15000) * mapSize * scaleFactor;
+      const y = ((15000 - pos.y) / 15000) * mapSize * scaleFactor;
+      imageMode(CENTER);
+      let champ = champMap[pid];
+      let icon = champ && champIconMap[champ.name];
+      if (icon) {
+        strokeWeight(3);
+        stroke(champ.team === "Blue" ? color(0, 128, 255) : color(255, 0, 0));
+        rect(x - 16, y - 16, 32, 32);
+        noStroke();
+        image(icon, x, y, 32, 32);
+      }
+      imageMode(CORNER);
     }
-    imageMode(CORNER);
   }
 
   for (const e of events) {
