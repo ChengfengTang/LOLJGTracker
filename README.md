@@ -1,35 +1,61 @@
 # 🧠 League of Legends AI Jungler Tracker
-🔍 1. Match Timeline Fetcher
-A script that uses Riot’s API to fetch full timeline and match metadata using match IDs.
 
-Data Sources:
+A web application that allows users to track and visualize League of Legends matches with a focus on jungler movement and game events.
 
-timeline.json: Per-minute snapshots of all players’ stats (level, CS, position, gold, etc.)
+## 🌟 Features
 
-metadata.json: Summoner spell IDs, champion, team side
+### 🔍 Summoner Lookup
+- Search for players by their Riot ID (name#tag)
+- Secure API key handling
+- Recent matches retrieval
 
-📊 2. Information Parser
-From timeline frames and match metadata:
+### 📊 Match History
+- View recent matches with detailed information
+- Game mode display
+- Match duration formatting
+- Copy match ID functionality
+- Team composition visualization
 
-Extract minute-by-minute (x, y) map positions
+### 🎮 Replay System
+- Interactive map visualization
+- Real-time champion movement tracking
+- Event-based interpolation for:
+  - Kills and assists
+  - Deaths and respawns
+  - Monster kills
+  - Level ups
+- Accurate death timer calculation based on:
+  - Champion level
+  - Game time
+  - Base Respawn Window (BRW)
+  - Time Impact Factor (TIF)
 
-Track CS, level, gold
+### 📈 Data Processing
+- Per-minute snapshots of player stats:
+  - Position (x, y)
+  - Level
+  - CS (minions + jungle)
+  - Gold
+- Event tracking:
+  - Champion kills and assists
+  - Elite monster kills (Dragon, Herald, Baron)
+  - Level ups
+  - Deaths and respawns
 
-Parse all meaningful events from the timeline:
+## 🛠️ Technical Stack
+- **Backend**: Python (Flask)
+- **Frontend**: HTML, JavaScript, p5.js
+- **APIs**: Riot Games API (match-v5)
+- **Data Processing**: Python (requests, json)
 
-CHAMPION_KILL → kills and assists
+## 🔧 Setup
+1. Get a Riot API key from [Riot Developer Portal](https://developer.riotgames.com/)
+2. Clone the repository
+3. Install dependencies: `pip install -r requirements.txt`
+4. Run the application: `python application.py`
 
-ELITE_MONSTER_KILL → Dragon, Herald, Baron...etc
+## 💬 Credits
+Built by: Cheng
 
-LEVEL_UP → tracked with interpolated positions
-
-💬 Credits
-Built with:
-
-Riot API (match-v5)
-
-Python 3
-
-requests, riotwatcher, and json modules
-
-By: Cheng
+## 📝 License
+This project is not endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing League of Legends.
