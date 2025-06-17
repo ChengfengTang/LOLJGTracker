@@ -8,6 +8,7 @@ A web application that allows users to track and visualize League of Legends mat
 - Search for players by their Riot ID (name#tag)
 - Secure API key handling
 - Recent matches retrieval
+- Persistent summoner data storage
 
 ### 📊 Match History
 - View recent matches with detailed information
@@ -15,6 +16,7 @@ A web application that allows users to track and visualize League of Legends mat
 - Match duration formatting
 - Copy match ID functionality
 - Team composition visualization
+- Cached match data for faster retrieval
 
 ### 🎮 Replay System
 - Interactive map visualization
@@ -46,13 +48,36 @@ A web application that allows users to track and visualize League of Legends mat
 - **Backend**: Python (Flask)
 - **Frontend**: HTML, JavaScript, p5.js
 - **APIs**: Riot Games API (match-v5)
+- **Database**: MySQL
 - **Data Processing**: Python (requests, json)
 
 ## 🔧 Setup
 1. Get a Riot API key from [Riot Developer Portal](https://developer.riotgames.com/)
 2. Clone the repository
-3. Install dependencies: `pip install -r requirements.txt`
-4. Run the application: `python application.py`
+3. Install MySQL and create a database named 'test'
+4. Create required tables:
+   ```sql
+   CREATE TABLE summoners (
+       summoner_id INT AUTO_INCREMENT PRIMARY KEY,
+       username VARCHAR(100) NOT NULL,
+       tag VARCHAR(50) NOT NULL,
+       puuid VARCHAR(100) NOT NULL,
+       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+   );
+
+   CREATE TABLE matches (
+       match_id VARCHAR(100) PRIMARY KEY,
+       match_data JSON
+   );
+
+   CREATE TABLE timelines (
+       match_id VARCHAR(100) PRIMARY KEY,
+       timeline_data JSON,
+       FOREIGN KEY (match_id) REFERENCES matches(match_id)
+   );
+   ```
+5. Install dependencies: `pip install -r requirements.txt`
+6. Run the application: `python application.py`
 
 ## 💬 Credits
 Built by: Cheng

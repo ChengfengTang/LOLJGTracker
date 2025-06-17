@@ -12,6 +12,7 @@ import requests
 import os
 import json
 from dotenv import load_dotenv
+import mysql.connector
 
 load_dotenv()  # Load environment variables from .env file
 
@@ -25,8 +26,15 @@ app = Flask(__name__)
 #HEADERS = {'X-Riot-Token': API_KEY}
 
 MATCH_REGION = "americas" # May need to add options for EUROPE and ASIA but doesn't seem to matter right now
-os.makedirs("timelines", exist_ok=True)
-os.makedirs("matches", exist_ok=True)
+
+# MySQL connection
+def get_db_connection():
+    return mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="root",
+        database="test"
+    )
 
 @app.route("/api/lookup")
 def lookup():
@@ -46,6 +54,24 @@ def lookup():
         return jsonify({"error": "Rate limit exceeded, try again later"}), 429
     elif r.status_code != 200:
         return jsonify({"error": f"Failed to fetch PUUID: {r.status_code}"}), r.status_code
+
+    # Insert or update summoner data in MySQL
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO summoners (username, tag, puuid) 
+        VALUES (%s, %s, %s)
+        ON DUPLICATE KEY UPDATE 
+        username = VALUES(username),
+        tag = VALUES(tag),
+        updated_at = CURRENT_TIMESTAMP
+        """,
+        (name, tag, r.json().get('puuid'))
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
 
     return jsonify(r.json())
 
@@ -106,43 +132,54 @@ def get_match_data(match_id):
     if not api_key:
         return jsonify({"error": "Missing API key"}), 400
 
-    headers = {'X-Riot-Token': api_key}
-    # Get metadata local or fetch it
-    meta = f"matches/{match_id}.json"
-    if not os.path.exists(meta): # If
+    # Try to get data from MySQL first
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    # Check if match exists in database
+    cursor.execute("SELECT match_data FROM matches WHERE match_id = %s", (match_id,))
+    match_result = cursor.fetchone()
+    
+    cursor.execute("SELECT timeline_data FROM timelines WHERE match_id = %s", (match_id,))
+    timeline_result = cursor.fetchone()
+
+    # If not in database, fetch from Riot API and store
+    if not match_result or not timeline_result:
+        headers = {'X-Riot-Token': api_key}
+        
+        # Get match data
         url = f"https://{MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/{match_id}"
         r = requests.get(url, headers=headers)
-        if r.status_code == 429:
-            return jsonify({"error": "Rate limit exceeded, try again later"}), 429
-        elif r.status_code == 200:
-            with open(meta, "w") as f:
-                json.dump(r.json(), f)
-        else:
+        if r.status_code != 200:
             return jsonify({"error": f"Failed to fetch match metadata: {r.status_code}"}), r.status_code
-
-    # Get timeline local or fetch it
-    timeline = f"timelines/{match_id}_timeline.json"
-    if not os.path.exists(timeline):
+        match_data = r.json()
+        
+        # Get timeline data
         url = f"https://{MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/{match_id}/timeline"
         r = requests.get(url, headers=headers)
-        if r.status_code == 429:
-            return jsonify({"error": "Rate limit exceeded, try again later"}), 429
-        elif r.status_code == 200:
-            with open(timeline, "w") as f:
-                json.dump(r.json(), f)
-        else:
+        if r.status_code != 200:
             return jsonify({"error": f"Failed to fetch timeline: {r.status_code}"}), r.status_code
+        timeline_data = r.json()
+        
+        # Store in MySQL
+        cursor.execute(
+            "INSERT INTO matches (match_id, match_data) VALUES (%s, %s)",
+            (match_id, json.dumps(match_data))
+        )
+        cursor.execute(
+            "INSERT INTO timelines (match_id, timeline_data) VALUES (%s, %s)",
+            (match_id, json.dumps(timeline_data))
+        )
+        conn.commit()
+    else:
+        # Use data from database
+        match_data = json.loads(match_result['match_data'])
+        timeline_data = json.loads(timeline_result['timeline_data'])
 
-    # Send both files
-    try:
-        with open(meta) as f:
-            meta = json.load(f)
-        with open(timeline) as f:
-            timeline = json.load(f)
-    except Exception as e:
-        return jsonify({"error": f"Failed to read file: {str(e)}"}), 500
-
-    return jsonify({"metadata": meta, "timeline": timeline})
+    cursor.close()
+    conn.close()
+    
+    return jsonify({"metadata": match_data, "timeline": timeline_data})
 
 # Serve lookup page
 @app.route('/')
