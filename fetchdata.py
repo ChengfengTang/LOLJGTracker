@@ -1,3 +1,9 @@
+"""
+League of Legends Match Data Fetcher
+This script fetches match data from the Riot Games API and saves it locally.
+It handles both match metadata and timeline data for analysis.
+"""
+
 import requests
 import json
 import os
@@ -22,7 +28,7 @@ print(f"✅ PUUID for {riot_id_name}#{riot_id_tagline}: {puuid}")
 
 # Step 3: Get list of recent match IDs for that PUUID
 match_region = "americas"
-count = 50
+count = 50 # Number of matches to fetch
 matchlist_url = f"https://{match_region}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?count={count}"
 
 response = requests.get(matchlist_url, headers=headers)

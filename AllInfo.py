@@ -1,16 +1,26 @@
+"""
+League of Legends Match Analysis Script
+This script analyzes specific match timeline data to track champion movements, events, and death timers.
+It processes both timeline and match metadata to provide detailed game analysis.
+"""
+
 import json, math
 
+# Load match timeline and metadata
 with open("timelines/NA1_5286644426_timeline.json") as f:
     timeline = json.load(f)
 
 with open("matches/NA1_5286644426.json") as f:
     meta = json.load(f)
 
+# Initialize data structures
 frames = timeline["info"]["frames"]
 parsed_data = {
-    "timelines": [],
-    "events": []
+    "timelines": [],  # Stores movement data for all champions
+    "events": []      # Stores game events (kills, objectives, etc.)
 }
+
+# Create mapping of participant IDs to champion names and teams
 champion_map = {}
 for x in meta["info"]["participants"]:
     pid = str(x["participantId"])
@@ -19,27 +29,33 @@ for x in meta["info"]["participants"]:
         "team": "Blue" if x["teamId"] == 100 else "Red"
     }
 
-# Extract movement for all 10 players (IDs 1 to 10)
-participant_data = {str(i): [] for i in range(1, 11)}
-level_dict = {str(i): 1 for i in range(1, 11)}
+# Initialize data structures for all 10 players
+participant_data = {str(i): [] for i in range(1, 11)}  # Movement data for each player
+level_dict = {str(i): 1 for i in range(1, 11)}         # Track champion levels
 
-#print(level_dict)
 def ms_to_minsec(ms):
+    """Convert milliseconds to MM:SS format"""
     minutes = ms // 60000
     seconds = (ms % 60000) // 1000
     return f"{minutes}:{seconds:02d}"
 
-# Where they respawn
 def get_base_position(team):
+    """Get spawn position coordinates based on team"""
     return {"x": 554, "y": 581} if team == "Blue" else {"x": 14500, "y": 14511}
 #https://leagueoflegends.fandom.com/wiki/Death
 def calculate_death_timer(level, game_minutes):
+    """
+    Calculate respawn timer based on champion level and game time
+    Uses Base Respawn Window (BRW) and Time Impact Factor (TIF)
+    Reference: https://leagueoflegends.fandom.com/wiki/Death
+    """
+    # Base Respawn Window values for each level
     BRW = [-1, 10, 10, 12, 12, 14, 16, 20, 25, 28, 32.5, 35, 37.5, 40, 42.5, 45, 47.5, 50, 52.5]
-    base_timer =BRW[level]
+    base_timer = BRW[level]
 
-    # Apply Time Impact Factor (TIF)
+    # Calculate Time Impact Factor based on game time
     if game_minutes < 15:
-        tif = 0  # No TIF for 0–14:59, use BRW
+        tif = 0  # No TIF for 0–14:59
     elif game_minutes < 30:
         tif = math.ceil(2 * (game_minutes - 15)) * 0.425 / 100
     elif game_minutes < 45:
@@ -52,11 +68,13 @@ def calculate_death_timer(level, game_minutes):
     print("at ", game_minutes, " minutes, level ", level, " respawn in ", total_timer)
     return round(total_timer)
 
+# Process movement data for all champions
 for frame in frames:
     ts = ms_to_minsec(frame["timestamp"])
     for pid, pf in frame["participantFrames"].items():
         if "position" not in pf:
             continue
+        # Store position, level, CS, and gold data for each champion
         entry = {
             "time": ts,
             "x": pf["position"]["x"],
@@ -67,19 +85,21 @@ for frame in frames:
         }
         participant_data[pid].append(entry)
 
+# Store movement data in parsed_data
 for pid, timeline in participant_data.items():
     parsed_data["timelines"].append({
         "id": int(pid),
         "timeline": timeline
     })
 
-# Process events
+# Process game events
 for frame in frames:
     for event in frame.get("events", []):
         ts = ms_to_minsec(event["timestamp"])
         etype = event["type"]
         event_entry = {"time": ts, "type": etype}
 
+        # Handle different event types
         if etype == "CHAMPION_KILL":
             event_entry.update({
                 "actor": event.get("killerId"),
@@ -110,6 +130,7 @@ for frame in frames:
 
 # Helper to get champion label with team
 def get_champ_label(pid):
+    """Format champion label with team color emoji"""
     pid = str(pid)
     champ = champion_map.get(pid, {}).get("champion", f"Champion {pid}")
     team = champion_map.get(pid, {}).get("team", "Unknown")
@@ -118,7 +139,7 @@ def get_champ_label(pid):
     else:
         return f"🔴 {champ}"
 
-# Build announcer lines
+# Process and print events with formatted output
 for event in parsed_data["events"]:
     t = event["time"]
     etype = event["type"]
@@ -143,7 +164,7 @@ for event in parsed_data["events"]:
         print(f"{t} - 💀 {victim_label} died at ({x}, {y})")
         victim_level = level_dict[str(victim)]
         death_timer = calculate_death_timer(victim_level, int(t.split(":")[0]))
-        tempMinSec =  int(t.split(":")[0]) * 60 + int(t.split(":")[1]) + death_timer
+        tempMinSec = int(t.split(":")[0]) * 60 + int(t.split(":")[1]) + death_timer
         respawn_timer = f"{tempMinSec//60}:{tempMinSec%60:02d}"
         print(f"{respawn_timer} -  {victim_label} respawn")
 
@@ -164,7 +185,7 @@ for event in parsed_data["events"]:
             champ_label = get_champ_label(pid)
             #print(f"{t} - 🆙 {champ_label} leveled up to {level}")
 
-# Print participant movement timelines nicely
+# Print movement data for each champion
 for p in parsed_data["timelines"]:
     pid = str(p["id"])
     champ = champion_map[pid]["champion"]
