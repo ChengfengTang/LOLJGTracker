@@ -1,9 +1,17 @@
 <!-- 
-
-To Do:
-
-death should respawn at base (treat it as a new event at base x,y and add it to interpolation), hide icon until respawn
-
+  League of Legends Match Replay Visualization
+  ===========================================
+  
+  This page provides a visual replay of a League of Legends match, showing:
+  - Champion movements on the Summoner's Rift map
+  - Combat events and kills
+  - Jungle monster kills
+  - Death and respawn timers
+  - Interactive timeline control
+  
+  TODO:
+  - Implement death respawn at base (treat as new event)
+  - Hide champion icon during death
 -->
 
 <!DOCTYPE html>
@@ -11,7 +19,15 @@ death should respawn at base (treat it as a new event at base x,y and add it to 
 <head>
   <meta charset="UTF-8">
   <title>LoL Jungle Tracker - Replay</title>
+  <!-- Include p5.js for canvas-based visualization -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.2/p5.min.js"></script>
+  
+  <!-- 
+    Custom CSS styles for the replay visualization
+    - Dark theme with modern UI elements
+    - Responsive layout with flexbox
+    - Interactive controls and event log
+  -->
   <style>
   body {
     display: flex;

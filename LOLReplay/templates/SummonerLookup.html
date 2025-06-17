@@ -6,33 +6,84 @@
 
 <!-- TODO: Make it look nicer? -->
   <style>
-    body { font-family: Arial, sans-serif; background: #0e1013; color: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; }
-    .card { background: #1e2125; padding: 30px 40px; border-radius: 12px; box-shadow: 0 0 12px rgba(0,0,0,0.4); text-align: center; }
-    input { padding: 10px; margin: 10px; border: none; border-radius: 8px; font-size: 16px; }
-    button { padding: 10px 20px; font-size: 16px; border: none; border-radius: 8px; background: #0ba360; color: white; cursor: pointer; }
-    button:hover { background: #089150; }
-    .error { color: #ff6961; margin-top: 10px; }
+    /* Base page styling with dark theme */
+    body { 
+      font-family: Arial, sans-serif; 
+      background: #0e1013; /* Dark background */
+      color: #fff; 
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      height: 100vh; 
+    }
+
+    /* Card container for the lookup form */
+    .card { 
+      background: #1e2125; 
+      padding: 30px 40px; 
+      border-radius: 12px; 
+      box-shadow: 0 0 12px rgba(0,0,0,0.4); 
+      text-align: center; 
+    }
+
+    /* Input field styling */
+    input { 
+      padding: 10px; 
+      margin: 10px; 
+      border: none; 
+      border-radius: 8px; 
+      font-size: 16px; 
+    }
+
+    /* Button styling with hover effect */
+    button { 
+      padding: 10px 20px; 
+      font-size: 16px; 
+      border: none; 
+      border-radius: 8px; 
+      background: #0ba360; 
+      color: white; 
+      cursor: pointer; 
+    }
+    button:hover { 
+      background: #089150; 
+    }
+
+    /* Error message styling */
+    .error { 
+      color: #ff6961; 
+      margin-top: 10px; 
+    }
   </style> 
 
 
 </head>
 <body>
+  <!-- Main container for the lookup form -->
   <div class="card">
     <h2>🔍 Look Up a Summoner</h2>
+    <!-- Form for summoner lookup with required fields -->
     <form id="lookup-form">
+      <!-- Input fields for summoner information -->
       <input type="text" id="name" placeholder="Summoner Name" required />
       <input type="text" id="tag" placeholder="Tag (e.g. 1234)" required />
       <input type="text" id="api-key" placeholder="Riot API Key" required />
       <br/>
       <button type="submit">Search</button>
+      <!-- Error message container -->
       <div class="error" id="error-msg"></div>
     </form>
   </div>
 
+  <!-- JavaScript for form handling and API interaction -->
   <script>
+    // Add event listener for form submission
     document.getElementById('lookup-form').addEventListener('submit', async function(e) 
     {
+      // Prevent default form submission
       e.preventDefault();
+
+      // Get and trim input values
       const name = document.getElementById('name').value.trim();
       const tag = document.getElementById('tag').value.trim();
       const apiKey = document.getElementById('api-key').value.trim();
@@ -41,20 +92,22 @@
 
       try 
       {
+        // Make API request to lookup summoner
         const res = await fetch(`/api/lookup?name=${encodeURIComponent(name)}&tag=${encodeURIComponent(tag)}&api_key=${encodeURIComponent(apiKey)}`);
         if (!res.ok) throw new Error('Invalid API key or Summoner');
         const data = await res.json();
         const puuid = data.puuid;
         
-        // Store API key and PUUID in sessionStorage
+        // Store API key and PUUID in session storage for use in other pages
         sessionStorage.setItem('riot_api_key', apiKey);
         sessionStorage.setItem('current_puuid', puuid);
         
-        // Redirect without API key in URL
+        // Redirect to matches page with PUUID
         window.location.href = `/matches.html?puuid=${puuid}`;
       } 
       catch (err) 
       {
+        // Display error message if lookup fails
         errorDiv.textContent = err.message;
       }
     });

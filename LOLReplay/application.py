@@ -1,11 +1,19 @@
-#Overview of the Project
-#This is a web application that allows users to:
+"""
+League of Legends Replay Tracker Application
+===========================================
 
-#Look up a League of Legends summoner by their name and tag (e.g., "Player#NA1").
-#Retrieve a list of recent matches for that summoner.
-#Fetch detailed match data and timelines for visualization.
-#Display this information through web pages (SummonerLookup.html, matches.html, replay.html).
+This Flask web application provides functionality to:
+1. Look up League of Legends summoners by their name and tag
+2. Retrieve and display recent match history
+3. Fetch detailed match data and timelines
+4. Visualize match replays and statistics
 
+The application uses:
+- Flask for the web framework
+- Riot Games API for League of Legends data
+- MySQL for data persistence
+- Environment variables for configuration
+"""
 
 from flask import Flask, request, jsonify, send_file, render_template
 import requests
@@ -14,8 +22,10 @@ import json
 from dotenv import load_dotenv
 import mysql.connector
 
-load_dotenv()  # Load environment variables from .env file
+# Load environment variables from .env file for secure configuration
+load_dotenv()
 
+# Initialize Flask application
 app = Flask(__name__)
 
 # Running server on http://127.0.0.1:5000
@@ -29,6 +39,11 @@ MATCH_REGION = "americas" # May need to add options for EUROPE and ASIA but does
 
 # MySQL connection
 def get_db_connection():
+    """
+    Establishes and returns a connection to the MySQL database.
+    Returns:
+        mysql.connector.connection: Database connection object
+    """
     return mysql.connector.connect(
         host="localhost",
         user="root",
@@ -38,13 +53,26 @@ def get_db_connection():
 
 @app.route("/api/lookup")
 def lookup():
+    """
+    API endpoint to look up a League of Legends summoner by name and tag.
+    
+    Query Parameters:
+        name (str): Summoner's name
+        tag (str): Summoner's tag (e.g., NA1)
+        api_key (str): Riot Games API key
+    
+    Returns:
+        JSON response containing the summoner's PUUID and other account information
+    """
     name = request.args.get("name")
     tag = request.args.get("tag")
     api_key = request.args.get("api_key")
     
+    # Validate required parameters
     if not name or not tag or not api_key:
         return jsonify({"error": "Missing name, tag, or API key"}), 400
 
+    # Set up API request headers
     headers = {'X-Riot-Token': api_key}
     url = f"https://{MATCH_REGION}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{name}/{tag}"
     r = requests.get(url, headers=headers)
@@ -55,7 +83,7 @@ def lookup():
     elif r.status_code != 200:
         return jsonify({"error": f"Failed to fetch PUUID: {r.status_code}"}), r.status_code
 
-    # Insert or update summoner data in MySQL
+    # Store summoner data in database
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute(
@@ -77,10 +105,25 @@ def lookup():
 
 @app.route("/api/matches/<puuid>")
 def get_matches(puuid):
+    """
+    API endpoint to retrieve recent matches for a summoner.
+    
+    Parameters:
+        puuid (str): Player's unique identifier
+    
+    Query Parameters:
+        api_key (str): Riot Games API key
+        start (int): Starting index for pagination (default: 0)
+        count (int): Number of matches to retrieve (default: 20)
+    
+    Returns:
+        JSON array of match IDs
+    """
     api_key = request.args.get("api_key")
     if not api_key:
         return jsonify({"error": "Missing API key"}), 400
 
+    # Parse and validate pagination parameters
     start = request.args.get("start", "0")
     count = request.args.get("count", "20")
     
@@ -90,10 +133,13 @@ def get_matches(puuid):
     except ValueError:
         return jsonify({"error": "Invalid start or count parameters"}), 400
 
+    # Fetch matches from Riot API
     headers = {'X-Riot-Token': api_key}
     # Note that For development keys, Riot enforces: 20 requests per second, 100 requests every 2 minutes (120s)
     url = f"https://{MATCH_REGION}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start={start}&count={count}"
     r = requests.get(url, headers=headers)
+    
+    # Handle API response
     if r.status_code == 429:
         return jsonify({"error": "Rate limit exceeded, try again later"}), 429
     elif r.status_code != 200:
@@ -103,6 +149,12 @@ def get_matches(puuid):
 
 @app.route("/api/matches/<puuid>/more")
 def get_more_matches(puuid):
+    """
+    API endpoint to load additional matches for pagination.
+    Similar to get_matches but specifically for loading more matches.
+    
+    Parameters and functionality are identical to get_matches.
+    """
     api_key = request.args.get("api_key")
     if not api_key:
         return jsonify({"error": "Missing API key"}), 400
@@ -128,6 +180,18 @@ def get_more_matches(puuid):
 
 @app.route("/api/match/<match_id>")
 def get_match_data(match_id):
+    """
+    API endpoint to retrieve detailed match data and timeline.
+    
+    Parameters:
+        match_id (str): Unique identifier for the match
+    
+    Query Parameters:
+        api_key (str): Riot Games API key
+    
+    Returns:
+        JSON object containing match metadata and timeline data
+    """
     api_key = request.args.get("api_key")
     if not api_key:
         return jsonify({"error": "Missing API key"}), 400
@@ -181,21 +245,23 @@ def get_match_data(match_id):
     
     return jsonify({"metadata": match_data, "timeline": timeline_data})
 
-# Serve lookup page
+# Route handlers for serving HTML pages
 @app.route('/')
 def home():
+    """Serve the main summoner lookup page"""
     return render_template('SummonerLookup.html')
 
 # Serve matches page
 @app.route('/matches.html')
 def matches_page():
+    """Serve the matches history page"""
     return render_template('matches.html')
 
 # Serve replay page
 @app.route('/replay.html')
 def replay_page():
-    return render_template('replay.html') 
-
+    """Serve the match replay visualization page"""
+    return render_template('replay.html')
 
 if __name__ == "__main__":
     # Local 
