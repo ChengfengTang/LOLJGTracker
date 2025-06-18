@@ -68,15 +68,17 @@ def calculate_death_timer(level, game_minutes):
     print("at ", game_minutes, " minutes, level ", level, " respawn in ", total_timer)
     return round(total_timer)
 
-# Process movement data for all champions
+# Process movement data for all champions with millisecond precision
 for frame in frames:
-    ts = ms_to_minsec(frame["timestamp"])
+    timestamp_ms = frame["timestamp"]  # Keep original millisecond timestamp
+    ts = ms_to_minsec(timestamp_ms)    # Format for display
     for pid, pf in frame["participantFrames"].items():
         if "position" not in pf:
             continue
-        # Store position, level, CS, and gold data for each champion
+        # Store position data with millisecond precision
         entry = {
-            "time": ts,
+            "timestamp_ms": timestamp_ms,  # Store raw millisecond timestamp
+            "time": ts,                    # Keep formatted time for display
             "x": pf["position"]["x"],
             "y": pf["position"]["y"],
             "level": pf.get("level", 1),
@@ -92,12 +94,17 @@ for pid, timeline in participant_data.items():
         "timeline": timeline
     })
 
-# Process game events
+# Process game events with millisecond precision
 for frame in frames:
     for event in frame.get("events", []):
-        ts = ms_to_minsec(event["timestamp"])
+        timestamp_ms = event["timestamp"]  # Keep original millisecond timestamp
+        ts = ms_to_minsec(timestamp_ms)    # Format for display
         etype = event["type"]
-        event_entry = {"time": ts, "type": etype}
+        event_entry = {
+            "timestamp_ms": timestamp_ms,  # Store raw millisecond timestamp
+            "time": ts,                    # Keep formatted time for display
+            "type": etype
+        }
 
         # Handle different event types
         if etype == "CHAMPION_KILL":
@@ -151,13 +158,13 @@ for event in parsed_data["events"]:
         killer_label = get_champ_label(killer)
         victim_label = get_champ_label(victim)
 
-        #print(f"{t} - ⚔️  {killer_label} killed {victim_label} at ({x}, {y})")
+        print(f"{t} - ⚔️  {killer_label} killed {victim_label} at ({x}, {y})")
 
         # Handle assists
         assists = event.get("assists", [])
         for assist_pid in assists:
             assist_label = get_champ_label(assist_pid)
-            #print(f"{t} - 🤝 {assist_label} assisted the kill at ({x}, {y})")
+            print(f"{t} - 🤝 {assist_label} assisted the kill at ({x}, {y})")
 
         # Handle death
         # https://leagueoflegends.fandom.com/wiki/Death
@@ -173,7 +180,7 @@ for event in parsed_data["events"]:
         monster = event.get("monster")
         x, y = event.get("x", "?"), event.get("y", "?")
         killer_label = get_champ_label(killer)
-        #print(f"{t} - 👾 {killer_label} killed {monster} at ({x}, {y})")
+        print(f"{t} - 👾 {killer_label} killed {monster} at ({x}, {y})")
 
     elif etype == "LEVEL_UP":
         # Optional: only show key levels (6/11/16)
@@ -183,7 +190,7 @@ for event in parsed_data["events"]:
             pid = event.get("actor")
             level_dict[str(pid)] = level
             champ_label = get_champ_label(pid)
-            #print(f"{t} - 🆙 {champ_label} leveled up to {level}")
+            print(f"{t} - 🆙 {champ_label} leveled up to {level}")
 
 # Print movement data for each champion
 for p in parsed_data["timelines"]:
@@ -195,6 +202,6 @@ for p in parsed_data["timelines"]:
     else:
         team = "🔴"
 
-    #print(f"\n{team} {champ}")
-   #for entry in p["timeline"]:
-        #print(f"  {entry['time']} - Position: ({entry['x']}, {entry['y']}) | Level {entry['level']} | CS {entry['cs']} | Gold {entry['gold']}")
+    print(f"\n{team} {champ}")
+    for entry in p["timeline"]:
+        print(f"  {entry['time']} - Position: ({entry['x']}, {entry['y']}) | Level {entry['level']} | CS {entry['cs']} | Gold {entry['gold']}")

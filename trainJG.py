@@ -2,6 +2,15 @@
 Jungle Movement Analysis and Prediction
 This script loads jungle movement data from the database and prepares it for training
 a model to predict jungler positions at given timestamps.
+
+
+
+Recommendation:
+Given the data sparsity, I would recommend:
+Reduce the sequence length (e.g., from 10 to 3-5)
+Simplify the model architecture
+Change the prediction task to be more coarse-grained (e.g., jungle quadrant prediction)
+Consider using a rule-based system for short-term predictions (e.g., if jungler is at red buff, they're likely to go to krugs next)
 """
 
 import mysql.connector
@@ -54,6 +63,7 @@ def prepare_sequence_data(matches, sequence_length=10):
     """
     Prepare movement data into sequences for training
     Each sequence contains position data for the last N timestamps
+    Uses millisecond precision for timestamps
     """
     X = []  # Input sequences
     y = []  # Target positions
@@ -61,13 +71,7 @@ def prepare_sequence_data(matches, sequence_length=10):
     for match in matches:
         movements = match['movements']
         
-        # Convert time strings to seconds for easier processing
-        for i in range(len(movements)):
-            time_str = movements[i]['time']
-            minutes, seconds = map(int, time_str.split(':'))
-            movements[i]['time_seconds'] = minutes * 60 + seconds
-        
-        # Create sequences
+        # Create sequences using millisecond timestamps
         for i in range(len(movements) - sequence_length):
             sequence = movements[i:i + sequence_length]
             target = movements[i + sequence_length]
@@ -76,7 +80,7 @@ def prepare_sequence_data(matches, sequence_length=10):
             sequence_features = []
             for move in sequence:
                 features = [
-                    move['time_seconds'],
+                    move['timestamp_ms'],  # Use millisecond timestamp directly
                     move['x'],
                     move['y'],
                     move['level'],
