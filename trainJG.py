@@ -3,6 +3,13 @@ Jungle Movement Analysis and Prediction
 This script loads jungle movement data from the database and prepares it for training
 a model to predict jungler positions at given timestamps.
 
+Model	Best For	Notes
+LSTM	Strong sequence modeling	Great starting point with proven results.
+GRU	Fast and efficient RNN variant	Often used in production.
+Transformer	Long sequences, global patterns	If you have >50k samples, very competitive.
+GNN	Complex environments + entity relations	Useful if you model camps, players as graph
+Diffusion	Rich, uncertain trajectory sampling	Requires more infra, but high research payoff
+
 
 
 Recommendation:
