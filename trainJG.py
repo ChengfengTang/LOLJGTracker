@@ -66,6 +66,11 @@ def load_champion_data(champion_name):
         cursor.close()
         conn.close()
 
+def time_str_to_seconds(time_str):
+    """Convert 'MM:SS' string to total seconds as int."""
+    minutes, seconds = map(int, time_str.split(":"))
+    return minutes * 60 + seconds
+
 def prepare_sequence_data(matches, sequence_length=10):
     """
     Prepare movement data into sequences for training
@@ -86,8 +91,9 @@ def prepare_sequence_data(matches, sequence_length=10):
             # Extract features from sequence
             sequence_features = []
             for move in sequence:
+                # Use 'time' converted to seconds instead of 'timestamp_ms'
                 features = [
-                    move['timestamp_ms'],  # Use millisecond timestamp directly
+                    time_str_to_seconds(move['time']),
                     move['x'],
                     move['y'],
                     move['level'],
@@ -173,12 +179,17 @@ def train_champion_model(champion_name):
     print(f"\nTest MAE: {test_mae:.2f} units")
     
     # Save model and scaler
-    model.save(f'models/{champion_name}_model')
+    model.save(f'models/{champion_name}_model.keras')
     np.save(f'models/{champion_name}_scaler.npy', scaler)
     
     return model, scaler
 
 def main():
-    """Train models for all junglers in the database"""
-    # Create models directory if it doesn't exist
+    """Train model for Pantheon only"""
     import os
+    if not os.path.exists('models'):
+        os.makedirs('models')
+    train_champion_model("Pantheon")
+
+if __name__ == "__main__":
+    main()
