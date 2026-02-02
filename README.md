@@ -1,4 +1,4 @@
-# 🧠 League of Legends AI Jungler Tracker
+# 🧠 League Insights
 
 A dual-project repository for League of Legends jungler analysis: machine learning model training and web-based match exploration.
 
