@@ -13,8 +13,8 @@ ML pipeline for jungler path prediction and analysis.
 - **Data Ingestion**: `topNPlayers.py` - Fetches top ranked players (Challenger, Grandmaster, Master) for training data collection
 - **Timeline Parsing**: `AllInfo.py` - Match timeline analysis and data processing
 - **Data Fetching**: `fetchdata.py` - Riot API data fetching utilities
-- **Champion Categorization**: `TDchampCategory.py` - Categorizes champions by jungler playstyle (aggressive, full_clear, etc.)
-- **Model Training**: `TDpredict.py` - ML model training and prediction for enemy jungler location prediction
+- **Champion Categorization**: `champCategory.py` - Categorizes champions by jungler playstyle (aggressive, full_clear, etc.)
+- **Model Training**: `predict.py` - ML model training and prediction for enemy jungler location prediction
 - **Model Artifacts**: (To be stored in `models/` directory)
 
 **Data Storage:**
@@ -39,12 +39,11 @@ OP.GG-style web application for match exploration and visualization.
 Real-time game monitoring system that visually watches the minimap and provides instant jungler path predictions.
 
 **Components:**
-- **Minimap Monitor**: Visually watches the game minimap using screen capture/computer vision
-- **Jungler Detection**: Detects when the jungler appears on the minimap and captures coordinates
-- **Position Data Collection**: Records captured position information for training data
-- **Model Inference Engine**: Loads trained models from `Predict/models/` for live predictions
-- **Real-time Prediction API**: Provides live-time jungler path predictions as the game progresses
-- **Data Pipeline**: Processes captured minimap data and feeds it into the trained ML model
+- **Minimap Tracker** (`minimap_tracker.py`): Captures a fixed screen region (minimap), samples every 1s
+- **Jungler config**: Two junglers set via hardcoded names (e.g. Lee Sin, Graves); UI for region/jungler selection later
+- **Icon detection**: Rough blob detection (red/blue) for up to two positions; template matching per champ planned
+- **Position data**: Records `(x, y, t_sec)` per jungler, saves to `Live/live_records.json`
+- **Model inference / prediction API**: (Planned) Load models from `Predict/models/` for live predictions
 
 **Architecture:**
 - Visual minimap monitoring (screen capture/computer vision) - no Riot API for live data
@@ -125,11 +124,10 @@ Real-time game monitoring system that visually watches the minimap and provides 
 ### Live
 - **Language**: Python
 - **Data Sources**: Visual minimap monitoring (screen capture/computer vision) - no Riot API
-- **Computer Vision**: Screen capture and minimap analysis to detect jungler positions
-- **Model Integration**: Loads trained models from `Predict/models/`
-- **Real-time Processing**: Continuous minimap monitoring and coordinate capture
-- **Data Collection**: Captured positions can be used as training data
-- **Framework**: (To be determined - likely OpenCV, PIL, or similar for screen capture)
+- **Libraries**: mss (screen capture), OpenCV (minimap analysis), numpy
+- **Script**: `Live/minimap_tracker.py` — fixed region capture, 1s sampling, icon detection, JSON output
+- **Model Integration**: (Planned) Load trained models from `Predict/models/`
+- **Data Collection**: Records saved to `Live/live_records.json` (jungler name, x, y, t_sec)
 
 ## 🔧 Setup
 
@@ -177,28 +175,24 @@ Real-time game monitoring system that visually watches the minimap and provides 
    - Model artifacts will be used by Live module for real-time predictions
 
 ### Live Setup
-1. Navigate to the live monitoring directory:
+1. From the repo root, install Live dependencies:
    ```bash
-   cd Live
+   pip install -r Live/requirements.txt
    ```
-2. Install dependencies (create `requirements.txt` as needed)
-   - Screen capture libraries (e.g., PIL, mss, pyautogui)
-   - Computer vision libraries (e.g., OpenCV)
-3. Ensure Predict module has trained models in `Predict/models/` directory
-4. Configure live game monitoring:
-   - Set up minimap screen capture region
-   - Configure jungler detection parameters
-   - No Riot API needed - purely visual monitoring
-5. Run the live monitor:
+   (Uses `mss`, `opencv-python-headless`, `numpy`.)
+2. **Rough base (current):** Two junglers and minimap region are hardcoded in `Live/minimap_tracker.py`:
+   - `JUNGLER_1`, `JUNGLER_2` (e.g. Lee Sin, Graves)
+   - `MINIMAP_REGION` (left, top, width, height in screen pixels). Adjust for your resolution/LoL window.
+3. Run the minimap tracker:
    ```bash
-   python live_monitor.py  # (To be implemented)
+   python Live/minimap_tracker.py
    ```
-6. The system will:
-   - Visually watch the minimap in real-time
-   - Detect when jungler appears and capture coordinates
-   - Use captured position data for training (as position info)
-   - Feed real-time data into trained models from Predict
-   - Provide continuous jungler path predictions
+4. The script will:
+   - Capture the fixed minimap region every 1 second
+   - Detect icon-like blobs (red/blue) and assign up to two positions to the two junglers
+   - Record `(x, y, t_sec)` and print to console; stop with **Ctrl+C**
+   - Save all records to `Live/live_records.json` when stopped
+5. Region selection UI and model inference integration are planned for later.
 
 ## 📝 Notes
 
@@ -211,5 +205,3 @@ Real-time game monitoring system that visually watches the minimap and provides 
 - Model inference API in Replay will read model artifacts from Predict (to be implemented).
 - Live module provides real-time predictions during active games, while Replay visualizes completed matches.
 
-## 💬 Credits
-Built by: Chengfeng Tang
